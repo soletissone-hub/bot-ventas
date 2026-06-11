@@ -159,8 +159,9 @@ async def nuevo(u,c):
 async def cb_cl(u,c):
  q=u.callback_query;await q.answer();_,v=q.data.split('|',1)
  if v=='_m_':await q.edit_message_text('Nombre:');return EC
- cl=next((x for x in c.user_data.get('cl',[]) if str(x['ID Cliente'])==v),None)
- if not cl:await q.edit_message_text('No encontrado');return CVH.END
+ todos=clientes()
+ cl=next((x for x in todos if str(x.get('ID Cliente','')).strip()==v.strip()),None)
+ if not cl:await q.edit_message_text('Cliente no encontrado (ID:'+v+')');return CVH.END
  c.user_data['cliente']=cl;return await mprod(q,c)
 async def txt_cl(u,c):
  c.user_data['cliente']={'Nombre':u.message.text.strip(),'Telefono':'','ID Cliente':''}
