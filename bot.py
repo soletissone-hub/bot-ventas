@@ -5,17 +5,10 @@ import gspread
 from google.oauth2.service_account import Credentials as C
 from telegram import Update,InlineKeyboardButton as IKB,InlineKeyboardMarkup as IKM
 from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler as CQH,MessageHandler as MH,filters,ContextTypes,ConversationHandler as CVH
-import os,logging
-from datetime import datetime
-from urllib.parse import quote
-import gspread
-from google.oauth2.service_account import Credentials as C
-from telegram import Update,InlineKeyboardButton as IKB,InlineKeyboardMarkup as IKM
-from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler as CQH,MessageHandler as MH,filters,ContextTypes,ConversationHandler as CVH
 TOK='8723725863:AAHKlRoHkk7fqV0TlMDpLhazXVT6ExHpjxM'
 SID='1L9jj1K4fXSsPITAMjqt3_SBigw3l8ZDQhH3rcZZP_6g'
 CF='credentials.json'
-EC,EP,EQ=range(3)
+EC,EP,EQ,ET=range(4)
 logging.basicConfig(level=logging.WARNING)
 def ss():
  import os,json
@@ -41,6 +34,12 @@ def ultimo():
  c=ss().worksheet('VENTAS').col_values(14)
  n=[int(v) for v in c[1:] if str(v).isdigit()]
  return max(n) if n else 0
+def guardar_cliente(nombre,tel):
+ ws=ss().worksheet('CLIENTES');rows=ws.get_all_values()
+ ids=[int(r[0]) for r in rows[1:] if r and r[0].isdigit()]
+ nid=max(ids)+1 if ids else 1
+ ws.append_row([nid,nombre,tel,'','','','',''],value_input_option='USER_ENTERED')
+ return nid
 def guardar(filas):
  ws=ss().worksheet('VENTAS')
  col=ws.col_values(1)
@@ -119,6 +118,19 @@ async def cb_cl(u,c):
  c.user_data['cliente']=cl;return await mprod(q,c)
 async def txt_cl(u,c):
  c.user_data['cliente']={'Nombre':u.message.text.strip(),'Telefono':'','ID Cliente':''}
+ await u.message.reply_text('Teléfono (ej: 1159194973) o escribí "saltar":')
+ return ET
+async def txt_tel(u,c):
+ tel=u.message.text.strip()
+ cl=c.user_data['cliente']
+ if tel.lower()!='saltar':
+  cl['Telefono']=tel
+  try:
+   nid=guardar_cliente(cl['Nombre'],tel)
+   cl['ID Cliente']=nid
+   await u.message.reply_text('Cliente guardado!')
+  except Exception as e:
+   await u.message.reply_text('No se pudo guardar en CLIENTES: '+str(e))
  return await mprod(u,c)
 async def mprod(o,c):
  try:
@@ -203,6 +215,7 @@ def main():
   entry_points=[CH('nuevo',nuevo)],
   states={
    EC:[CQH(cb_cl,pattern=r'^cli\|'),MH(filters.TEXT&~filters.COMMAND,txt_cl)],
+   ET:[MH(filters.TEXT&~filters.COMMAND,txt_tel)],
    EP:[CQH(cb_pr,pattern=r'^pr\|'),CQH(cb_pr,pattern=r'^ac\|')],
    EQ:[MH(filters.TEXT&~filters.COMMAND,txt_cant)],
   },
