@@ -63,8 +63,30 @@ def wl(t,m):
  if t.startswith('0'):t=t[1:]
  if not t.startswith('549'):t='549'+t
  return 'https://wa.me/'+t+'?text='+quote(m)
+def msgs_promo():
+ rows=ss().worksheet('MENSAJES_PROMO').get_all_values()
+ if not rows:return []
+ h=rows[0];return [dict(zip(h,r)) for r in rows[1:] if any(r)]
+async def comunicar(u,c):
+ m=await u.message.reply_text('...')
+ try:
+  msgs=msgs_promo();c.user_data['promo_msgs']=msgs
+  if not msgs:await m.edit_text('No hay mensajes en MENSAJES_PROMO');return
+  kb=[[IKB(x.get('nomre',x.get('Nombre','')),callback_data='promo|'+str(i))] for i,x in enumerate(msgs)]
+  await m.edit_text('¿Qué comunicado querés mandar?',reply_markup=IKM(kb))
+ except Exception as e:await m.edit_text('Error:'+str(e))
+async def cb_promo(u,c):
+ q=u.callback_query;await q.answer()
+ idx=int(q.data.split('|')[1])
+ msgs=c.user_data.get('promo_msgs',[])
+ texto=msgs[idx].get('texto',msgs[idx].get('Texto','')) if idx<len(msgs) else ''
+ cls=clientes();kb=[]
+ for cl in cls:
+  tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
+  if nom and tel:kb.append([IKB(nom,url=wl(tel,texto))])
+ await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
 async def start(u,c):
- await u.message.reply_text('Bot Ventas\n/nuevo /stock /pendientes /clientes /cancelar')
+ await u.message.reply_text('Bot Ventas\n/nuevo /stock /pendientes /clientes /comunicar /cancelar')
 async def st(u,c):
  m=await u.message.reply_text('...')
  try:
@@ -237,6 +259,8 @@ def main():
  app.add_handler(CH('stock',st))
  app.add_handler(CH('pendientes',pend))
  app.add_handler(CH('clientes',cls))
+ app.add_handler(CH('comunicar',comunicar))
+ app.add_handler(CQH(cb_promo,pattern=r'^promo\|'))
  app.add_handler(cv)
  print('Bot iniciado!')
  import asyncio
