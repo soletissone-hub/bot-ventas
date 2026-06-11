@@ -98,15 +98,15 @@ async def cb_pcl(u,c):
  try:
   idx=int(q.data.split('|')[1])
   cls=c.user_data.get('promo_cls',[])
-  texto=c.user_data.get('promo_texto','')
+  texto=c.user_data.get('promo_texto','').replace('\\n','\n')
   cl=cls[idx]
   tel=str(cl.get('Telefono','')).strip()
   nom=cl.get('Nombre','')
-  FLYER='https://raw.githubusercontent.com/soletissone-hub/bot-ventas/main/flyer.jpg.png'
-  try:await q.message.reply_photo(photo=FLYER)
+  try:
+   with open('flyer.jpg.png','rb') as f:await q.message.reply_photo(photo=f)
   except:pass
   link=wl(tel,texto)
-  await q.message.reply_text('📲 Mandá el mensaje a '+nom+':\n'+link)
+  await q.message.reply_text(link)
  except Exception as e:
   await q.message.reply_text('Error: '+str(e))
 async def start(u,c):
