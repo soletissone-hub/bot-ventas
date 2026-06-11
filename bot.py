@@ -77,17 +77,23 @@ async def comunicar(u,c):
  except Exception as e:await m.edit_text('Error:'+str(e))
 async def cb_promo(u,c):
  q=u.callback_query;await q.answer()
- idx=int(q.data.split('|')[1])
- msgs=c.user_data.get('promo_msgs',[])
- texto=msgs[idx].get('texto',msgs[idx].get('Texto','')) if idx<len(msgs) else ''
- FLYER='https://raw.githubusercontent.com/soletissone-hub/bot-ventas/main/flyer.jpg.png'
- try:await q.message.reply_photo(photo=FLYER)
- except:pass
- cls=clientes();kb=[]
- for cl in cls:
-  tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
-  if nom and tel:kb.append([IKB(nom,url=wl(tel,texto))])
- await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
+ try:
+  idx=int(q.data.split('|')[1])
+  msgs=c.user_data.get('promo_msgs',[])
+  if not msgs:
+   await q.edit_message_text('Error: no hay mensajes guardados. Usá /comunicar de nuevo.')
+   return
+  texto=msgs[idx].get('texto',msgs[idx].get('Texto','')) if idx<len(msgs) else ''
+  FLYER='https://raw.githubusercontent.com/soletissone-hub/bot-ventas/main/flyer.jpg.png'
+  try:await q.message.reply_photo(photo=FLYER)
+  except:pass
+  cls=clientes();kb=[]
+  for cl in cls:
+   tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
+   if nom and tel:kb.append([IKB(nom,url=wl(tel,texto))])
+  await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
+ except Exception as e:
+  await q.edit_message_text('Error en cb_promo: '+str(e))
 async def start(u,c):
  await u.message.reply_text('Bot Ventas\n/nuevo /stock /pendientes /clientes /comunicar /cancelar')
 async def st(u,c):
