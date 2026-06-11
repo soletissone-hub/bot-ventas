@@ -18,7 +18,14 @@ CF='credentials.json'
 EC,EP,EQ=range(3)
 logging.basicConfig(level=logging.WARNING)
 def ss():
- return gspread.authorize(C.from_service_account_file(CF,scopes=['https://www.googleapis.com/auth/spreadsheets'])).open_by_key(SID)
+ import os,json
+ creds_json=os.environ.get('GOOGLE_CREDENTIALS')
+ if creds_json:
+  info=json.loads(creds_json)
+  cred=C.from_service_account_info(info,scopes=['https://www.googleapis.com/auth/spreadsheets'])
+ else:
+  cred=C.from_service_account_file(CF,scopes=['https://www.googleapis.com/auth/spreadsheets'])
+ return gspread.authorize(cred).open_by_key(SID)
 def clientes():return ss().worksheet('CLIENTES').get_all_records()
 def stock():return {r['Producto']:r for r in ss().worksheet('STOCK').get_all_records() if r.get('Producto')}
 def precios():
