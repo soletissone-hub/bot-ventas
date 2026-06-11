@@ -8,7 +8,7 @@ from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler a
 TOK='8723725863:AAHKlRoHkk7fqV0TlMDpLhazXVT6ExHpjxM'
 SID='1L9jj1K4fXSsPITAMjqt3_SBigw3l8ZDQhH3rcZZP_6g'
 CF='credentials.json'
-EC,EP,EQ,ET=range(4)
+EC,EP,EQ,ET,EA=range(5)
 logging.basicConfig(level=logging.WARNING)
 def ss():
  import os,json
@@ -34,11 +34,11 @@ def ultimo():
  c=ss().worksheet('VENTAS').col_values(14)
  n=[int(v) for v in c[1:] if str(v).isdigit()]
  return max(n) if n else 0
-def guardar_cliente(nombre,tel):
+def guardar_cliente(nombre,tel,manzana='',lote=''):
  ws=ss().worksheet('CLIENTES');rows=ws.get_all_values()
  ids=[int(r[0]) for r in rows[1:] if r and r[0].isdigit()]
  nid=max(ids)+1 if ids else 1
- ws.append_row([nid,nombre,tel,'','','','',''],value_input_option='USER_ENTERED')
+ ws.append_row([nid,nombre,tel,'',manzana,lote,'',''],value_input_option='USER_ENTERED')
  return nid
 def guardar(filas):
  ws=ss().worksheet('VENTAS')
@@ -125,12 +125,23 @@ async def txt_tel(u,c):
  cl=c.user_data['cliente']
  if tel.lower()!='saltar':
   cl['Telefono']=tel
-  try:
-   nid=guardar_cliente(cl['Nombre'],tel)
-   cl['ID Cliente']=nid
-   await u.message.reply_text('Cliente guardado!')
-  except Exception as e:
-   await u.message.reply_text('No se pudo guardar en CLIENTES: '+str(e))
+ await u.message.reply_text('Dirección: Manzana y Lote (ej: 29 17) o escribí "saltar":')
+ return EA
+async def txt_dir(u,c):
+ txt=u.message.text.strip()
+ cl=c.user_data['cliente']
+ manzana='';lote=''
+ if txt.lower()!='saltar':
+  partes=txt.split()
+  manzana=partes[0] if len(partes)>0 else ''
+  lote=partes[1] if len(partes)>1 else ''
+  cl['Manzana']=manzana;cl['Lote']=lote
+ try:
+  nid=guardar_cliente(cl['Nombre'],cl.get('Telefono',''),manzana,lote)
+  cl['ID Cliente']=nid
+  await u.message.reply_text('Cliente guardado!')
+ except Exception as e:
+  await u.message.reply_text('No se pudo guardar: '+str(e))
  return await mprod(u,c)
 async def mprod(o,c):
  try:
@@ -216,6 +227,7 @@ def main():
   states={
    EC:[CQH(cb_cl,pattern=r'^cli\|'),MH(filters.TEXT&~filters.COMMAND,txt_cl)],
    ET:[MH(filters.TEXT&~filters.COMMAND,txt_tel)],
+   EA:[MH(filters.TEXT&~filters.COMMAND,txt_dir)],
    EP:[CQH(cb_pr,pattern=r'^pr\|'),CQH(cb_pr,pattern=r'^ac\|')],
    EQ:[MH(filters.TEXT&~filters.COMMAND,txt_cant)],
   },
