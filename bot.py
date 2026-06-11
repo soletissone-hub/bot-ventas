@@ -80,6 +80,9 @@ async def cb_promo(u,c):
  idx=int(q.data.split('|')[1])
  msgs=c.user_data.get('promo_msgs',[])
  texto=msgs[idx].get('texto',msgs[idx].get('Texto','')) if idx<len(msgs) else ''
+ FLYER='https://raw.githubusercontent.com/soletissone-hub/bot-ventas/main/flyer.jpg.png'
+ try:await q.message.reply_photo(photo=FLYER)
+ except:pass
  cls=clientes();kb=[]
  for cl in cls:
   tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
