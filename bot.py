@@ -81,19 +81,34 @@ async def cb_promo(u,c):
   idx=int(q.data.split('|')[1])
   msgs=c.user_data.get('promo_msgs',[])
   if not msgs:
-   await q.edit_message_text('Error: no hay mensajes guardados. Usá /comunicar de nuevo.')
+   await q.edit_message_text('Error: usá /comunicar de nuevo.')
    return
-  texto=msgs[idx].get('texto',msgs[idx].get('Texto','')) if idx<len(msgs) else ''
+  texto=msgs[idx].get('texto',msgs[idx].get('Texto',''))
+  c.user_data['promo_texto']=texto
+  cls=clientes();kb=[]
+  for i,cl in enumerate(cls):
+   tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
+   if nom and tel:kb.append([IKB(nom,callback_data='pcl|'+str(i))])
+  c.user_data['promo_cls']=cls
+  await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
+ except Exception as e:
+  await q.edit_message_text('Error: '+str(e))
+async def cb_pcl(u,c):
+ q=u.callback_query;await q.answer()
+ try:
+  idx=int(q.data.split('|')[1])
+  cls=c.user_data.get('promo_cls',[])
+  texto=c.user_data.get('promo_texto','')
+  cl=cls[idx]
+  tel=str(cl.get('Telefono','')).strip()
+  nom=cl.get('Nombre','')
   FLYER='https://raw.githubusercontent.com/soletissone-hub/bot-ventas/main/flyer.jpg.png'
   try:await q.message.reply_photo(photo=FLYER)
   except:pass
-  cls=clientes();kb=[]
-  for cl in cls:
-   tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
-   if nom and tel:kb.append([IKB(nom,url=wl(tel,texto))])
-  await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
+  link=wl(tel,texto)
+  await q.message.reply_text('📲 Mandá el mensaje a '+nom+':\n'+link)
  except Exception as e:
-  await q.edit_message_text('Error en cb_promo: '+str(e))
+  await q.message.reply_text('Error: '+str(e))
 async def start(u,c):
  await u.message.reply_text('Bot Ventas\n/nuevo /stock /pendientes /clientes /comunicar /cancelar')
 async def st(u,c):
@@ -270,6 +285,7 @@ def main():
  app.add_handler(CH('clientes',cls))
  app.add_handler(CH('comunicar',comunicar))
  app.add_handler(CQH(cb_promo,pattern=r'^promo\|'))
+ app.add_handler(CQH(cb_pcl,pattern=r'^pcl\|'))
  app.add_handler(cv)
  print('Bot iniciado!')
  import asyncio
