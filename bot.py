@@ -258,7 +258,7 @@ async def confirmar(q,c):
   MH='Ya podés pasar a retirar tu pedido por:\n\U0001f4cd Manzana 29 - Lote 17\n\nPodés abonar en efectivo o por transferencia.\nSi pagás en efectivo, avisame con cuánto venís así te preparo el cambio :)\n\nSi elegís transferencia, el alias es:\n\U0001f4b3 soletissone.mp\n\nTe dejo la ubicación para que llegues fácil:\nhttps://maps.app.goo.gl/SR1qy4qfikJ4F8os6?g_st=ic\n\n¡Gracias por tu compra! \U0001f366'
   MF='\U0001f95c *¡Tu pedido ya quedó registrado!* \U0001f330\n\nPodés abonar *en efectivo o por transferencia*.\nSi pagás en efectivo, avisame con cuánto así te preparo el cambio.\nSi preferís transferencia, el alias es:\n\U0001f4b3 *soletissone.mp*\n\n¡Muchas gracias por tu compra! \U0001f95c\U0001f330✨'
   tmpl=MH if 'Helados' in tipos else MF
-  mwa='Hola '+cl.get('Nombre','')+'!\nTe confirmo tu pedido:\n'+lns_wa+'\n*Total:* '+fp(tg)+'\n'+tmpl
+  mwa='Hola '+cl.get('Nombre','').split()[0]+'!\nTe confirmo tu pedido:\n'+lns_wa+'\n*Total:* '+fp(tg)+'\n'+tmpl
   tel=cl.get('Telefono','');url=wl(tel,mwa) if tel else None
   res='Pedido #'+str(nro)+' guardado!\n\n'+cl.get('Nombre','')+'\n'+lns_tg+'\nTotal: '+fp(tg)
   kb=[[IKB('Enviar WhatsApp',url=url)]] if url else []
