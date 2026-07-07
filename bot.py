@@ -66,9 +66,12 @@ def lp(v):
  try:return float(str(v).replace('$','').replace('.','').replace(',','.'))
  except:return 0.0
 def wl(t,m):
- t=str(t).strip().replace(' ','').replace('-','')
- if t.startswith('0'):t=t[1:]
- if not t.startswith('549'):t='549'+t
+ t_raw=str(t).strip()
+ is_intl=t_raw.startswith('+')
+ t=t_raw.replace(' ','').replace('-','').replace('+','')
+ if not is_intl:
+  if t.startswith('0'):t=t[1:]
+  if not t.startswith('549'):t='549'+t
  return 'https://wa.me/'+t+'?text='+quote(m)
 def msgs_promo():
  rows=ss().worksheet('MENSAJES_PROMO').get_all_values()
@@ -222,13 +225,26 @@ async def nuevo(u,c):
 async def cb_cl(u,c):
  q=u.callback_query;await q.answer();_,v=q.data.split('|',1)
  if v=='_m_':await q.edit_message_text('Nombre:');return EC
- todos=clientes()
+ if v.startswith('_nuevo_|'):
+  nombre=v[8:]
+  c.user_data['cliente']={'Nombre':nombre,'Telefono':'','ID Cliente':''}
+  await q.edit_message_text('Telefono (ej: 1159194973, +447911123456) o escribi "saltar":')
+  return ET
+ todos=c.user_data.get('cl') or clientes()
  cl=next((x for x in todos if str(x.get('ID Cliente','')).strip()==v.strip()),None)
  if not cl:await q.edit_message_text('Cliente no encontrado (ID:'+v+')');return CVH.END
  c.user_data['cliente']=cl;return await mprod(q,c)
 async def txt_cl(u,c):
- c.user_data['cliente']={'Nombre':u.message.text.strip(),'Telefono':'','ID Cliente':''}
- await u.message.reply_text('Telefono (ej: 1159194973) o escribi "saltar":')
+ nombre=u.message.text.strip()
+ todos=c.user_data.get('cl') or clientes()
+ matches=[x for x in todos if nombre.lower() in x.get('Nombre','').lower()]
+ if matches:
+  kb=[[IKB(x.get('Nombre',''),callback_data='cli|'+str(x['ID Cliente']))] for x in matches if x.get('Nombre')]
+  kb.append([IKB('Agregar "'+nombre+'" como nuevo',callback_data='cli|_nuevo_|'+nombre)])
+  await u.message.reply_text('Encontre estos clientes:',reply_markup=IKM(kb))
+  return EC
+ c.user_data['cliente']={'Nombre':nombre,'Telefono':'','ID Cliente':''}
+ await u.message.reply_text('Telefono (ej: 1159194973, +447911123456) o escribi "saltar":')
  return ET
 async def txt_tel(u,c):
  tel=u.message.text.strip()
