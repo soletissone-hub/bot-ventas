@@ -66,12 +66,9 @@ def lp(v):
  try:return float(str(v).replace('$','').replace('.','').replace(',','.'))
  except:return 0.0
 def wl(t,m):
- t_raw=str(t).strip()
- is_intl=t_raw.startswith('+')
- t=t_raw.replace(' ','').replace('-','').replace('+','')
- if not is_intl:
-  if t.startswith('0'):t=t[1:]
-  if not t.startswith('549'):t='549'+t
+ t=str(t).strip().replace(' ','').replace('-','').replace('+','').replace('(','').replace(')','')
+ if t.startswith('0'):t=t[1:]
+ if len(t)==10:t='549'+t
  return 'https://wa.me/'+t+'?text='+quote(m)
 def msgs_promo():
  rows=ss().worksheet('MENSAJES_PROMO').get_all_values()
