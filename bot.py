@@ -1,17 +1,16 @@
-import os,logging
+import os,logging,json
 from datetime import datetime
 from urllib.parse import quote
 import gspread
 from google.oauth2.service_account import Credentials as C
 from telegram import Update,InlineKeyboardButton as IKB,InlineKeyboardMarkup as IKM
 from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler as CQH,MessageHandler as MH,filters,ContextTypes,ConversationHandler as CVH
-TOK='8723725863:AAHKlRoHkk7fqV0TlMDpLhazXVT6ExHpjxM'
+TOK=os.getenv('TELEGRAM_TOKEN','')
 SID='1L9jj1K4fXSsPITAMjqt3_SBigw3l8ZDQhH3rcZZP_6g'
 CF='credentials.json'
-EC,EP,EQ,ET,EA=range(5)
+EC,EP,EQ,ET,EA,EG,EGS=range(7)
 logging.basicConfig(level=logging.WARNING)
 def ss():
- import os,json
  creds_json=os.environ.get('GOOGLE_CREDENTIALS')
  if creds_json:
   info=json.loads(creds_json)
@@ -19,8 +18,16 @@ def ss():
  else:
   cred=C.from_service_account_file(CF,scopes=['https://www.googleapis.com/auth/spreadsheets'])
  return gspread.authorize(cred).open_by_key(SID)
-def clientes():return ss().worksheet('CLIENTES').get_all_records()
-def stock():return {r['Producto']:r for r in ss().worksheet('STOCK').get_all_records() if r.get('Producto')}
+def get_records(ws):
+ rows=ws.get_all_values()
+ if not rows:return []
+ h=rows[0];seen={};uh=[]
+ for col in h:
+  if col in seen:seen[col]+=1;uh.append(col+'_'+str(seen[col]))
+  else:seen[col]=0;uh.append(col)
+ return [dict(zip(uh,r)) for r in rows[1:] if any(r)]
+def clientes():return get_records(ss().worksheet('CLIENTES'))
+def stock():return {r['Producto']:r for r in get_records(ss().worksheet('STOCK')) if r.get('Producto')}
 def precios():
  ws=ss().worksheet('CATALOGO');rows=ws.get_all_values()
  if not rows:return {}
@@ -67,6 +74,7 @@ def msgs_promo():
  rows=ss().worksheet('MENSAJES_PROMO').get_all_values()
  if not rows:return []
  h=rows[0];return [dict(zip(h,r)) for r in rows[1:] if any(r)]
+# ── /comunicar ───────────────────────────────────────────────────────────────
 async def comunicar(u,c):
  m=await u.message.reply_text('...')
  try:
@@ -80,9 +88,7 @@ async def cb_promo(u,c):
  try:
   idx=int(q.data.split('|')[1])
   msgs=c.user_data.get('promo_msgs',[])
-  if not msgs:
-   await q.edit_message_text('Error: usá /comunicar de nuevo.')
-   return
+  if not msgs:await q.edit_message_text('Error: usá /comunicar de nuevo.');return
   texto=msgs[idx].get('texto',msgs[idx].get('Texto',''))
   c.user_data['promo_texto']=texto
   cls=clientes();kb=[]
@@ -91,8 +97,7 @@ async def cb_promo(u,c):
    if nom and tel:kb.append([IKB(nom,callback_data='pcl|'+str(i))])
   c.user_data['promo_cls']=cls
   await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
- except Exception as e:
-  await q.edit_message_text('Error: '+str(e))
+ except Exception as e:await q.edit_message_text('Error: '+str(e))
 async def cb_pcl(u,c):
  q=u.callback_query;await q.answer()
  try:
@@ -101,16 +106,73 @@ async def cb_pcl(u,c):
   texto=c.user_data.get('promo_texto','').replace('\\n','\n')
   cl=cls[idx]
   tel=str(cl.get('Telefono','')).strip()
-  nom=cl.get('Nombre','')
   try:
    with open('flyer.jpg.png','rb') as f:await q.message.reply_photo(photo=f)
   except:pass
   link=wl(tel,texto)
   await q.message.reply_text(link)
- except Exception as e:
-  await q.message.reply_text('Error: '+str(e))
+ except Exception as e:await q.message.reply_text('Error: '+str(e))
+# ── /gestionar ───────────────────────────────────────────────────────────────
+async def gestionar(u,c):
+ m=await u.message.reply_text('...')
+ try:
+  ws=ss().worksheet('VENTAS');rows=get_records(ws)
+  pendientes=[r for r in rows if r.get('Estado') not in ('Entregado','Cancelado','')]
+  if not pendientes:await m.edit_text('No hay pedidos activos.');return CVH.END
+  agrup={}
+  for i,r in enumerate(rows):
+   if r.get('Estado') not in ('Entregado','Cancelado',''):
+    nro=r.get('Nro Pedido',r.get('Numero Pedido','?'))
+    agrup.setdefault(str(nro),[]).append((i,r))
+  c.user_data['ventas_rows']=rows;c.user_data['ventas_agrup']=agrup
+  kb=[]
+  for nro,items in sorted(agrup.items(),key=lambda x:x[0]):
+   cl=items[0][1].get('Cliente','?');est=items[0][1].get('Estado','?')
+   prods=', '.join(str(it[1].get('Producto','')) for it in items)
+   kb.append([IKB('#'+str(nro)+' '+cl+' ['+est+'] — '+prods,callback_data='gest|'+str(nro))])
+  await m.edit_text('¿Qué pedido querés gestionar?',reply_markup=IKM(kb))
+  return EG
+ except Exception as e:await m.edit_text('Error: '+str(e));return CVH.END
+async def cb_gest(u,c):
+ q=u.callback_query;await q.answer()
+ nro=q.data.split('|')[1]
+ c.user_data['gest_nro']=nro
+ agrup=c.user_data.get('ventas_agrup',{})
+ items=agrup.get(nro,[])
+ if not items:await q.edit_message_text('No encontré ese pedido.');return CVH.END
+ cl=items[0][1].get('Cliente','?');est=items[0][1].get('Estado','?')
+ prods='\n'.join('- '+str(it[1].get('Cantidad',''))+'x '+str(it[1].get('Producto',''))+' '+fp(lp(it[1].get('Total',0))) for it in items)
+ txt='Pedido #'+nro+'\n'+cl+' ['+est+']\n\n'+prods+'\n\nCambiar estado a:'
+ kb=[[IKB('Entregado',callback_data='gs|Entregado'),IKB('Pagado',callback_data='gs|Pagado')],
+     [IKB('Cancelado',callback_data='gs|Cancelado'),IKB('Reservado',callback_data='gs|Reservado')]]
+ await q.edit_message_text(txt,reply_markup=IKM(kb))
+ return EGS
+async def cb_gs(u,c):
+ q=u.callback_query;await q.answer()
+ nuevo_estado=q.data.split('|')[1]
+ nro=c.user_data.get('gest_nro','')
+ try:
+  ws=ss().worksheet('VENTAS');all_rows=ws.get_all_values()
+  h=all_rows[0] if all_rows else []
+  try:col_estado=h.index('Estado')+1
+  except:col_estado=8
+  try:col_nro=[i for i,x in enumerate(h) if 'Nro' in x or 'Numero' in x or 'Pedido' in x and 'Nro' in x]
+  except:col_nro=[]
+  col_nro_idx=col_nro[0]+1 if col_nro else 14
+  updates=[]
+  for i,row in enumerate(all_rows[1:],start=2):
+   if len(row)>=col_nro_idx and str(row[col_nro_idx-1]).strip()==str(nro):
+    updates.append({'range':f'{chr(64+col_estado)}{i}','values':[[nuevo_estado]]})
+  if updates:
+   ws.batch_update(updates,value_input_option='USER_ENTERED')
+   await q.edit_message_text('Pedido #'+nro+' actualizado a: '+nuevo_estado)
+  else:
+   await q.edit_message_text('No encontré filas del pedido #'+nro)
+ except Exception as e:await q.edit_message_text('Error: '+str(e))
+ return CVH.END
+# ── comandos simples ──────────────────────────────────────────────────────────
 async def start(u,c):
- await u.message.reply_text('Bot Ventas\n/nuevo /stock /pendientes /clientes /comunicar /cancelar')
+ await u.message.reply_text('Bot Ventas\n/nuevo /stock /pendientes /clientes /gestionar /comunicar /cancelar')
 async def st(u,c):
  m=await u.message.reply_text('...')
  try:
@@ -127,17 +189,17 @@ async def st(u,c):
 async def pend(u,c):
  m=await u.message.reply_text('...')
  try:
-  rows=[r for r in ss().worksheet('VENTAS').get_all_records() if r.get('Estado')=='Reservado']
+  rows=[r for r in get_records(ss().worksheet('VENTAS')) if r.get('Estado')=='Reservado']
   if not rows:await m.edit_text('Sin pendientes.');return
   pc={}
   for r in rows:pc.setdefault(r.get('Cliente','?'),[]).append(r)
   t='PENDIENTES\n\n'
   for cl,its in pc.items():
    t+=cl+'\n'
-   for i in its:t+=' '+str(i.get('Cantidad'))+'x '+str(i.get('Producto'))+' '+fp(i.get('Total',0))+'\n'
+   for i in its:t+=' '+str(i.get('Cantidad'))+'x '+str(i.get('Producto'))+' '+fp(lp(i.get('Total',0)))+'\n'
   await m.edit_text(t)
  except Exception as e:await m.edit_text('Error:'+str(e))
-async def cls(u,c):
+async def clsl(u,c):
  m=await u.message.reply_text('...')
  try:
   t='CLIENTES\n\n'
@@ -146,6 +208,7 @@ async def cls(u,c):
    if n:t+=n+' '+str(x.get('Telefono',''))+'\n'
   await m.edit_text(t)
  except Exception as e:await m.edit_text('Error:'+str(e))
+# ── /nuevo ────────────────────────────────────────────────────────────────────
 async def nuevo(u,c):
  c.user_data.clear();c.user_data['items']=[]
  m=await u.message.reply_text('...')
@@ -165,14 +228,13 @@ async def cb_cl(u,c):
  c.user_data['cliente']=cl;return await mprod(q,c)
 async def txt_cl(u,c):
  c.user_data['cliente']={'Nombre':u.message.text.strip(),'Telefono':'','ID Cliente':''}
- await u.message.reply_text('Teléfono (ej: 1159194973) o escribí "saltar":')
+ await u.message.reply_text('Telefono (ej: 1159194973) o escribi "saltar":')
  return ET
 async def txt_tel(u,c):
  tel=u.message.text.strip()
  cl=c.user_data['cliente']
- if tel.lower()!='saltar':
-  cl['Telefono']=tel
- await u.message.reply_text('Dirección: Manzana y Lote (ej: 29 17) o escribí "saltar":')
+ if tel.lower()!='saltar':cl['Telefono']=tel
+ await u.message.reply_text('Direccion: Manzana y Lote (ej: 29 17) o escribi "saltar":')
  return EA
 async def txt_dir(u,c):
  txt=u.message.text.strip()
@@ -187,8 +249,7 @@ async def txt_dir(u,c):
   nid=guardar_cliente(cl['Nombre'],cl.get('Telefono',''),manzana,lote)
   cl['ID Cliente']=nid
   await u.message.reply_text('Cliente guardado!')
- except Exception as e:
-  await u.message.reply_text('No se pudo guardar: '+str(e))
+ except Exception as e:await u.message.reply_text('No se pudo guardar: '+str(e))
  return await mprod(u,c)
 async def mprod(o,c):
  try:
@@ -204,7 +265,7 @@ async def mprod(o,c):
   for n,d in [(k,v) for k,v in s.items() if int(v.get('Disponible') or 0)>0]:
    di=int(d.get('Disponible') or 0);ti=d.get('Tipo producto','')
    em='H' if ti=='Helados' else 'F'
-   pr=lp(p.get(n,{}).get('Precio publico',0))
+   pr=lp(p.get(n,{}).get('Precio público',p.get(n,{}).get('Precio publico',0)))
    kb.append([IKB(em+' '+n+' ('+str(di)+') '+fp(pr),callback_data='pr|'+n)])
   if its:kb.append([IKB('Confirmar',callback_data='ac|ok')])
   kb.append([IKB('Cancelar',callback_data='ac|no')])
@@ -222,7 +283,7 @@ async def cb_pr(u,c):
   await q.edit_message_text('Cancelado');return CVH.END
  s=c.user_data.get('s',{});p=c.user_data.get('p',{})
  di=int(s.get(v,{}).get('Disponible') or 0)
- pr=lp(p.get(v,{}).get('Precio publico',0))
+ pr=lp(p.get(v,{}).get('Precio público',p.get(v,{}).get('Precio publico',0)))
  c.user_data['psel']=v;c.user_data['prsel']=pr
  await q.edit_message_text(v+'\n'+fp(pr)+'\nDisp: '+str(di)+'\n\nCuantos?')
  return EQ
@@ -255,9 +316,9 @@ async def confirmar(q,c):
   tipos=set(i['t'] for i in its)
   lns_wa='\n'.join('- '+i['n']+' x'+str(i['q']) for i in its)
   lns_tg='\n'.join(' '+str(i['q'])+'x '+i['n']+': '+fp(i['q']*i['pr']) for i in its)
-  MH='Ya podés pasar a retirar tu pedido por:\n\U0001f4cd Manzana 29 - Lote 17\n\nPodés abonar en efectivo o por transferencia.\nSi pagás en efectivo, avisame con cuánto venís así te preparo el cambio :)\n\nSi elegís transferencia, el alias es:\n\U0001f4b3 soletissone.mp\n\nTe dejo la ubicación para que llegues fácil:\nhttps://maps.app.goo.gl/SR1qy4qfikJ4F8os6?g_st=ic\n\n¡Gracias por tu compra! \U0001f366'
-  MF='\U0001f95c *¡Tu pedido ya quedó registrado!* \U0001f330\n\nPodés abonar *en efectivo o por transferencia*.\nSi pagás en efectivo, avisame con cuánto así te preparo el cambio.\nSi preferís transferencia, el alias es:\n\U0001f4b3 *soletissone.mp*\n\n¡Muchas gracias por tu compra! \U0001f95c\U0001f330✨'
-  tmpl=MH if 'Helados' in tipos else MF
+  MH_='Ya podes pasar a retirar tu pedido por:\n\U0001f4cd Manzana 29 - Lote 17\n\nPodes abonar en efectivo o por transferencia.\nSi pagas en efectivo, avisame con cuanto venis asi te preparo el cambio :)\n\nSi eleges transferencia, el alias es:\n\U0001f4b3 soletissone.mp\n\nTe dejo la ubicacion para que llegues facil:\nhttps://maps.app.goo.gl/SR1qy4qfikJ4F8os6?g_st=ic\n\n¡Gracias por tu compra! \U0001f366'
+  MF_='\U0001f95c *¡Tu pedido ya quedo registrado!* \U0001f330\n\nPodes abonar *en efectivo o por transferencia*.\nSi pagas en efectivo, avisame con cuanto asi te preparo el cambio.\nSi preferis transferencia, el alias es:\n\U0001f4b3 *soletissone.mp*\n\n¡Muchas gracias por tu compra! \U0001f95c\U0001f330✨'
+  tmpl=MH_ if 'Helados' in tipos else MF_
   mwa='Hola '+cl.get('Nombre','').split()[0]+'!\nTe confirmo tu pedido:\n'+lns_wa+'\n*Total:* '+fp(tg)+'\n'+tmpl
   tel=cl.get('Telefono','');url=wl(tel,mwa) if tel else None
   res='Pedido #'+str(nro)+' guardado!\n\n'+cl.get('Nombre','')+'\n'+lns_tg+'\nTotal: '+fp(tg)
@@ -268,8 +329,11 @@ async def confirmar(q,c):
 async def cancelar(u,c):
  c.user_data.clear();await u.message.reply_text('Cancelado');return CVH.END
 def main():
+ import asyncio
+ loop=asyncio.new_event_loop()
+ asyncio.set_event_loop(loop)
  app=Application.builder().token(TOK).build()
- cv=CVH(
+ cv_nuevo=CVH(
   entry_points=[CH('nuevo',nuevo)],
   states={
    EC:[CQH(cb_cl,pattern=r'^cli\|'),MH(filters.TEXT&~filters.COMMAND,txt_cl)],
@@ -280,17 +344,23 @@ def main():
   },
   fallbacks=[CH('cancelar',cancelar)],
  )
+ cv_gest=CVH(
+  entry_points=[CH('gestionar',gestionar)],
+  states={
+   EG:[CQH(cb_gest,pattern=r'^gest\|')],
+   EGS:[CQH(cb_gs,pattern=r'^gs\|')],
+  },
+  fallbacks=[CH('cancelar',cancelar)],
+ )
  app.add_handler(CH('start',start))
  app.add_handler(CH('stock',st))
  app.add_handler(CH('pendientes',pend))
- app.add_handler(CH('clientes',cls))
+ app.add_handler(CH('clientes',clsl))
  app.add_handler(CH('comunicar',comunicar))
  app.add_handler(CQH(cb_promo,pattern=r'^promo\|'))
  app.add_handler(CQH(cb_pcl,pattern=r'^pcl\|'))
- app.add_handler(cv)
- print('Bot iniciado!')
- import asyncio
- loop=asyncio.new_event_loop()
- asyncio.set_event_loop(loop)
+ app.add_handler(cv_nuevo)
+ app.add_handler(cv_gest)
+ print('Bot iniciado')
  app.run_polling()
 if __name__=="__main__":main()
