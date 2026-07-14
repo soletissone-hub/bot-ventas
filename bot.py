@@ -9,6 +9,9 @@ TOK=os.getenv('TELEGRAM_TOKEN','')
 SID='1L9jj1K4fXSsPITAMjqt3_SBigw3l8ZDQhH3rcZZP_6g'
 CF=os.path.join(os.path.dirname(os.path.abspath(__file__)),'credentials.json')
 WEBHOOK_URL=os.getenv('WEBHOOK_URL','')
+if WEBHOOK_URL:
+ os.environ.setdefault('HTTPS_PROXY','http://proxy.server:3128')
+ os.environ.setdefault('HTTP_PROXY','http://proxy.server:3128')
 EC,EP,EQ,ET,EA,EG,EGS=range(7)
 logging.basicConfig(level=logging.WARNING)
 def ss():
