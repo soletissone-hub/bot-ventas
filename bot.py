@@ -1,13 +1,14 @@
-import os,logging,json
+import os,logging,json,asyncio
 from datetime import datetime
 from urllib.parse import quote
 import gspread
 from google.oauth2.service_account import Credentials as C
 from telegram import Update,InlineKeyboardButton as IKB,InlineKeyboardMarkup as IKM
-from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler as CQH,MessageHandler as MH,filters,ContextTypes,ConversationHandler as CVH
+from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler as CQH,MessageHandler as MH,filters,ConversationHandler as CVH,PicklePersistence
 TOK=os.getenv('TELEGRAM_TOKEN','')
 SID='1L9jj1K4fXSsPITAMjqt3_SBigw3l8ZDQhH3rcZZP_6g'
 CF='credentials.json'
+WEBHOOK_URL=os.getenv('WEBHOOK_URL','')
 EC,EP,EQ,ET,EA,EG,EGS=range(7)
 logging.basicConfig(level=logging.WARNING)
 def ss():
@@ -49,13 +50,11 @@ def guardar_cliente(nombre,tel,manzana='',lote=''):
  return nid
 def guardar(filas):
  ws=ss().worksheet('VENTAS')
- col=ws.col_values(1)
- last=0
+ col=ws.col_values(1);last=0
  for i,v in enumerate(col):
   if v and v not in('Fecha','Nombre'):last=i+1
  for i,fila in enumerate(filas):
-  r=last+1+i
-  fila[10]=f'=SI(O(D{r}="";E{r}="");"";E{r}*L{r})'
+  r=last+1+i;fila[10]=f'=SI(O(D{r}="";E{r}="");"";E{r}*L{r})'
  ws.update(range_name=f'A{last+1}',values=filas,value_input_option='USER_ENTERED')
 def fp(v):
  try:
@@ -81,14 +80,13 @@ async def comunicar(u,c):
   msgs=msgs_promo();c.user_data['promo_msgs']=msgs
   if not msgs:await m.edit_text('No hay mensajes en MENSAJES_PROMO');return
   kb=[[IKB(x.get('nomre',x.get('Nombre','')),callback_data='promo|'+str(i))] for i,x in enumerate(msgs)]
-  await m.edit_text('¿Qué comunicado querés mandar?',reply_markup=IKM(kb))
+  await m.edit_text('Que comunicado queres mandar?',reply_markup=IKM(kb))
  except Exception as e:await m.edit_text('Error:'+str(e))
 async def cb_promo(u,c):
  q=u.callback_query;await q.answer()
  try:
-  idx=int(q.data.split('|')[1])
-  msgs=c.user_data.get('promo_msgs',[])
-  if not msgs:await q.edit_message_text('Error: usá /comunicar de nuevo.');return
+  idx=int(q.data.split('|')[1]);msgs=c.user_data.get('promo_msgs',[])
+  if not msgs:await q.edit_message_text('Error: usa /comunicar de nuevo.');return
   texto=msgs[idx].get('texto',msgs[idx].get('Texto',''))
   c.user_data['promo_texto']=texto
   cls=clientes();kb=[]
@@ -96,21 +94,18 @@ async def cb_promo(u,c):
    tel=str(cl.get('Telefono','')).strip();nom=cl.get('Nombre','')
    if nom and tel:kb.append([IKB(nom,callback_data='pcl|'+str(i))])
   c.user_data['promo_cls']=cls
-  await q.edit_message_text('Elegí el cliente:',reply_markup=IKM(kb) if kb else None)
+  await q.edit_message_text('Elegi el cliente:',reply_markup=IKM(kb) if kb else None)
  except Exception as e:await q.edit_message_text('Error: '+str(e))
 async def cb_pcl(u,c):
  q=u.callback_query;await q.answer()
  try:
-  idx=int(q.data.split('|')[1])
-  cls=c.user_data.get('promo_cls',[])
+  idx=int(q.data.split('|')[1]);cls=c.user_data.get('promo_cls',[])
   texto=c.user_data.get('promo_texto','').replace('\\n','\n')
-  cl=cls[idx]
-  tel=str(cl.get('Telefono','')).strip()
+  cl=cls[idx];tel=str(cl.get('Telefono','')).strip()
   try:
    with open('flyer.jpg.png','rb') as f:await q.message.reply_photo(photo=f)
   except:pass
-  link=wl(tel,texto)
-  await q.message.reply_text(link)
+  await q.message.reply_text(wl(tel,texto))
  except Exception as e:await q.message.reply_text('Error: '+str(e))
 # ── /gestionar ───────────────────────────────────────────────────────────────
 async def gestionar(u,c):
@@ -129,45 +124,41 @@ async def gestionar(u,c):
   for nro,items in sorted(agrup.items(),key=lambda x:x[0]):
    cl=items[0][1].get('Cliente','?');est=items[0][1].get('Estado','?')
    prods=', '.join(str(it[1].get('Producto','')) for it in items)
-   kb.append([IKB('#'+str(nro)+' '+cl+' ['+est+'] — '+prods,callback_data='gest|'+str(nro))])
-  await m.edit_text('¿Qué pedido querés gestionar?',reply_markup=IKM(kb))
+   kb.append([IKB('#'+str(nro)+' '+cl+' ['+est+'] - '+prods,callback_data='gest|'+str(nro))])
+  await m.edit_text('Que pedido queres gestionar?',reply_markup=IKM(kb))
   return EG
  except Exception as e:await m.edit_text('Error: '+str(e));return CVH.END
 async def cb_gest(u,c):
  q=u.callback_query;await q.answer()
- nro=q.data.split('|')[1]
- c.user_data['gest_nro']=nro
- agrup=c.user_data.get('ventas_agrup',{})
- items=agrup.get(nro,[])
- if not items:await q.edit_message_text('No encontré ese pedido.');return CVH.END
+ nro=q.data.split('|')[1];c.user_data['gest_nro']=nro
+ agrup=c.user_data.get('ventas_agrup',{});items=agrup.get(nro,[])
+ if not items:await q.edit_message_text('No encontre ese pedido.');return CVH.END
  cl=items[0][1].get('Cliente','?');est=items[0][1].get('Estado','?')
  prods='\n'.join('- '+str(it[1].get('Cantidad',''))+'x '+str(it[1].get('Producto',''))+' '+fp(lp(it[1].get('Total',0))) for it in items)
- txt='Pedido #'+nro+'\n'+cl+' ['+est+']\n\n'+prods+'\n\nCambiar estado a:'
  kb=[[IKB('Entregado',callback_data='gs|Entregado'),IKB('Pagado',callback_data='gs|Pagado')],
      [IKB('Cancelado',callback_data='gs|Cancelado'),IKB('Reservado',callback_data='gs|Reservado')]]
- await q.edit_message_text(txt,reply_markup=IKM(kb))
+ await q.edit_message_text('Pedido #'+nro+'\n'+cl+' ['+est+']\n\n'+prods+'\n\nCambiar estado a:',reply_markup=IKM(kb))
  return EGS
 async def cb_gs(u,c):
  q=u.callback_query;await q.answer()
- nuevo_estado=q.data.split('|')[1]
- nro=c.user_data.get('gest_nro','')
+ nuevo_estado=q.data.split('|')[1];nro=c.user_data.get('gest_nro','')
  try:
   ws=ss().worksheet('VENTAS');all_rows=ws.get_all_values()
   h=all_rows[0] if all_rows else []
   try:col_estado=h.index('Estado')+1
   except:col_estado=8
-  try:col_nro=[i for i,x in enumerate(h) if 'Nro' in x or 'Numero' in x or 'Pedido' in x and 'Nro' in x]
-  except:col_nro=[]
-  col_nro_idx=col_nro[0]+1 if col_nro else 14
+  col_nro_idx=14
+  for i,x in enumerate(h):
+   if 'Nro' in x:col_nro_idx=i+1;break
   updates=[]
   for i,row in enumerate(all_rows[1:],start=2):
    if len(row)>=col_nro_idx and str(row[col_nro_idx-1]).strip()==str(nro):
     updates.append({'range':f'{chr(64+col_estado)}{i}','values':[[nuevo_estado]]})
   if updates:
    ws.batch_update(updates,value_input_option='USER_ENTERED')
-   await q.edit_message_text('Pedido #'+nro+' actualizado a: '+nuevo_estado)
+   await q.edit_message_text('Pedido #'+nro+' -> '+nuevo_estado)
   else:
-   await q.edit_message_text('No encontré filas del pedido #'+nro)
+   await q.edit_message_text('No encontre filas del pedido #'+nro)
  except Exception as e:await q.edit_message_text('Error: '+str(e))
  return CVH.END
 # ── comandos simples ──────────────────────────────────────────────────────────
@@ -178,12 +169,10 @@ async def st(u,c):
  try:
   s=stock();t='STOCK\n\nHELADOS\n'
   for n,d in [(k,v) for k,v in s.items() if v.get('Tipo producto')=='Helados']:
-   di=int(d.get('Disponible') or 0)
-   t+=('OK' if di>0 else 'XX')+' '+n+': '+str(di)+'\n'
+   di=int(d.get('Disponible') or 0);t+=('OK' if di>0 else 'XX')+' '+n+': '+str(di)+'\n'
   t+='\nFRUTOS SECOS\n'
   for n,d in [(k,v) for k,v in s.items() if v.get('Tipo producto')!='Helados' and k]:
-   di=int(d.get('Disponible') or 0)
-   t+=('OK' if di>0 else 'XX')+' '+n+': '+str(di)+'\n'
+   di=int(d.get('Disponible') or 0);t+=('OK' if di>0 else 'XX')+' '+n+': '+str(di)+'\n'
   await m.edit_text(t)
  except Exception as e:await m.edit_text('Error:'+str(e))
 async def pend(u,c):
@@ -223,9 +212,8 @@ async def cb_cl(u,c):
  q=u.callback_query;await q.answer();_,v=q.data.split('|',1)
  if v=='_m_':await q.edit_message_text('Nombre:');return EC
  if v.startswith('_nuevo_|'):
-  nombre=v[8:]
-  c.user_data['cliente']={'Nombre':nombre,'Telefono':'','ID Cliente':''}
-  await q.edit_message_text('Telefono (ej: 1159194973, +447911123456) o escribi "saltar":')
+  nombre=v[8:];c.user_data['cliente']={'Nombre':nombre,'Telefono':'','ID Cliente':''}
+  await q.edit_message_text('Telefono (ej: 1159194973 o +5215551075994) o escribi "saltar":')
   return ET
  todos=c.user_data.get('cl') or clientes()
  cl=next((x for x in todos if str(x.get('ID Cliente','')).strip()==v.strip()),None)
@@ -241,27 +229,24 @@ async def txt_cl(u,c):
   await u.message.reply_text('Encontre estos clientes:',reply_markup=IKM(kb))
   return EC
  c.user_data['cliente']={'Nombre':nombre,'Telefono':'','ID Cliente':''}
- await u.message.reply_text('Telefono (ej: 1159194973, +447911123456) o escribi "saltar":')
+ await u.message.reply_text('Telefono (ej: 1159194973 o +5215551075994) o escribi "saltar":')
  return ET
 async def txt_tel(u,c):
- tel=u.message.text.strip()
- cl=c.user_data['cliente']
+ tel=u.message.text.strip();cl=c.user_data['cliente']
  if tel.lower()!='saltar':cl['Telefono']=tel
  await u.message.reply_text('Direccion: Manzana y Lote (ej: 29 17) o escribi "saltar":')
  return EA
 async def txt_dir(u,c):
- txt=u.message.text.strip()
- cl=c.user_data['cliente']
+ txt=u.message.text.strip();cl=c.user_data['cliente']
  manzana='';lote=''
  if txt.lower()!='saltar':
   partes=txt.split()
-  manzana=partes[0] if len(partes)>0 else ''
+  manzana=partes[0] if partes else ''
   lote=partes[1] if len(partes)>1 else ''
   cl['Manzana']=manzana;cl['Lote']=lote
  try:
   nid=guardar_cliente(cl['Nombre'],cl.get('Telefono',''),manzana,lote)
-  cl['ID Cliente']=nid
-  await u.message.reply_text('Cliente guardado!')
+  cl['ID Cliente']=nid;await u.message.reply_text('Cliente guardado!')
  except Exception as e:await u.message.reply_text('No se pudo guardar: '+str(e))
  return await mprod(u,c)
 async def mprod(o,c):
@@ -278,7 +263,7 @@ async def mprod(o,c):
   for n,d in [(k,v) for k,v in s.items() if int(v.get('Disponible') or 0)>0]:
    di=int(d.get('Disponible') or 0);ti=d.get('Tipo producto','')
    em='H' if ti=='Helados' else 'F'
-   pr=lp(p.get(n,{}).get('Precio público',p.get(n,{}).get('Precio publico',0)))
+   pr=lp(p.get(n,{}).get('Precio publico',p.get(n,{}).get('Precio publico',0)))
    kb.append([IKB(em+' '+n+' ('+str(di)+') '+fp(pr),callback_data='pr|'+n)])
   if its:kb.append([IKB('Confirmar',callback_data='ac|ok')])
   kb.append([IKB('Cancelar',callback_data='ac|no')])
@@ -296,7 +281,7 @@ async def cb_pr(u,c):
   await q.edit_message_text('Cancelado');return CVH.END
  s=c.user_data.get('s',{});p=c.user_data.get('p',{})
  di=int(s.get(v,{}).get('Disponible') or 0)
- pr=lp(p.get(v,{}).get('Precio público',p.get(v,{}).get('Precio publico',0)))
+ pr=lp(p.get(v,{}).get('Precio publico',p.get(v,{}).get('Precio publico',0)))
  c.user_data['psel']=v;c.user_data['prsel']=pr
  await q.edit_message_text(v+'\n'+fp(pr)+'\nDisp: '+str(di)+'\n\nCuantos?')
  return EQ
@@ -318,8 +303,7 @@ async def confirmar(q,c):
  try:
   fecha=datetime.now().strftime('%d/%m/%Y');nro=ultimo()+1
   p=c.user_data.get('p',{});s=c.user_data.get('s',{})
-  tg=sum(i['q']*i['pr'] for i in its)
-  filas=[]
+  tg=sum(i['q']*i['pr'] for i in its);filas=[]
   for i in its:
    n=i['n'];q2=i['q'];pr=i['pr'];tot=q2*pr;ti=i['t']
    di=int(s.get(n,{}).get('Disponible') or 0);ch='OK' if di>=q2 else 'SIN STOCK'
@@ -341,11 +325,10 @@ async def confirmar(q,c):
  return CVH.END
 async def cancelar(u,c):
  c.user_data.clear();await u.message.reply_text('Cancelado');return CVH.END
-def main():
- import asyncio
- loop=asyncio.new_event_loop()
- asyncio.set_event_loop(loop)
- app=Application.builder().token(TOK).build()
+# ── setup de handlers ─────────────────────────────────────────────────────────
+def build_app():
+ persistence=PicklePersistence(filepath='bot_state.pkl')
+ app=Application.builder().token(TOK).persistence(persistence).build()
  cv_nuevo=CVH(
   entry_points=[CH('nuevo',nuevo)],
   states={
@@ -374,6 +357,29 @@ def main():
  app.add_handler(CQH(cb_pcl,pattern=r'^pcl\|'))
  app.add_handler(cv_nuevo)
  app.add_handler(cv_gest)
+ return app
+# ── modo webhook (PythonAnywhere) ─────────────────────────────────────────────
+if WEBHOOK_URL:
+ from flask import Flask,request as freq
+ _loop=asyncio.new_event_loop()
+ asyncio.set_event_loop(_loop)
+ _ptb=build_app()
+ _loop.run_until_complete(_ptb.initialize())
+ flask_app=Flask(__name__)
+ @flask_app.route('/'+TOK,methods=['POST'])
+ def wh():
+  data=freq.get_json(force=True)
+  update=Update.de_json(data,_ptb.bot)
+  _loop.run_until_complete(_ptb.process_update(update))
+  return 'ok',200
+ @flask_app.route('/')
+ def health():return 'Bot activo',200
+ application=flask_app
+# ── modo polling (local) ──────────────────────────────────────────────────────
+def main():
+ loop=asyncio.new_event_loop()
+ asyncio.set_event_loop(loop)
+ app=build_app()
  print('Bot iniciado')
  app.run_polling()
-if __name__=="__main__":main()
+if __name__=='__main__':main()
