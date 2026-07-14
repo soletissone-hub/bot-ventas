@@ -7,7 +7,7 @@ from telegram import Update,InlineKeyboardButton as IKB,InlineKeyboardMarkup as 
 from telegram.ext import Application,CommandHandler as CH,CallbackQueryHandler as CQH,MessageHandler as MH,filters,ConversationHandler as CVH,PicklePersistence
 TOK=os.getenv('TELEGRAM_TOKEN','')
 SID='1L9jj1K4fXSsPITAMjqt3_SBigw3l8ZDQhH3rcZZP_6g'
-CF='credentials.json'
+CF=os.path.join(os.path.dirname(os.path.abspath(__file__)),'credentials.json')
 WEBHOOK_URL=os.getenv('WEBHOOK_URL','')
 EC,EP,EQ,ET,EA,EG,EGS=range(7)
 logging.basicConfig(level=logging.WARNING)
