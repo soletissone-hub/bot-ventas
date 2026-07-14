@@ -331,11 +331,7 @@ async def cancelar(u,c):
 # ── setup de handlers ─────────────────────────────────────────────────────────
 def build_app():
  persistence=PicklePersistence(filepath='bot_state.pkl')
- b=Application.builder().token(TOK).persistence(persistence)
- if WEBHOOK_URL:
-  from telegram.request import HTTPXRequest
-  b=b.request(HTTPXRequest(proxy='http://proxy.server:3128'))
- app=b.build()
+ app=Application.builder().token(TOK).persistence(persistence).build()
  cv_nuevo=CVH(
   entry_points=[CH('nuevo',nuevo)],
   states={
@@ -371,10 +367,21 @@ if WEBHOOK_URL:
  _loop=asyncio.new_event_loop()
  asyncio.set_event_loop(_loop)
  _ptb=build_app()
- _loop.run_until_complete(_ptb.initialize())
+ _ready=[False]
+ try:
+  _loop.run_until_complete(_ptb.initialize())
+  _ready[0]=True
+ except Exception:
+  pass
  flask_app=Flask(__name__)
  @flask_app.route('/'+TOK,methods=['POST'])
  def wh():
+  if not _ready[0]:
+   try:
+    _loop.run_until_complete(_ptb.initialize())
+    _ready[0]=True
+   except Exception:
+    pass
   data=freq.get_json(force=True)
   update=Update.de_json(data,_ptb.bot)
   _loop.run_until_complete(_ptb.process_update(update))
