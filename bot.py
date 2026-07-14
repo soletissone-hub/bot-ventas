@@ -263,7 +263,7 @@ async def mprod(o,c):
   for n,d in [(k,v) for k,v in s.items() if int(v.get('Disponible') or 0)>0]:
    di=int(d.get('Disponible') or 0);ti=d.get('Tipo producto','')
    em='H' if ti=='Helados' else 'F'
-   pr=lp(p.get(n,{}).get('Precio publico',p.get(n,{}).get('Precio publico',0)))
+   pr=lp(p.get(n,{}).get('Precio público',p.get(n,{}).get('Precio publico',0)))
    kb.append([IKB(em+' '+n+' ('+str(di)+') '+fp(pr),callback_data='pr|'+n)])
   if its:kb.append([IKB('Confirmar',callback_data='ac|ok')])
   kb.append([IKB('Cancelar',callback_data='ac|no')])
@@ -281,7 +281,7 @@ async def cb_pr(u,c):
   await q.edit_message_text('Cancelado');return CVH.END
  s=c.user_data.get('s',{});p=c.user_data.get('p',{})
  di=int(s.get(v,{}).get('Disponible') or 0)
- pr=lp(p.get(v,{}).get('Precio publico',p.get(v,{}).get('Precio publico',0)))
+ pr=lp(p.get(v,{}).get('Precio público',p.get(v,{}).get('Precio publico',0)))
  c.user_data['psel']=v;c.user_data['prsel']=pr
  await q.edit_message_text(v+'\n'+fp(pr)+'\nDisp: '+str(di)+'\n\nCuantos?')
  return EQ
@@ -328,7 +328,11 @@ async def cancelar(u,c):
 # ── setup de handlers ─────────────────────────────────────────────────────────
 def build_app():
  persistence=PicklePersistence(filepath='bot_state.pkl')
- app=Application.builder().token(TOK).persistence(persistence).build()
+ b=Application.builder().token(TOK).persistence(persistence)
+ if WEBHOOK_URL:
+  from telegram.request import HTTPXRequest
+  b=b.request(HTTPXRequest(proxy='http://proxy.server:3128'))
+ app=b.build()
  cv_nuevo=CVH(
   entry_points=[CH('nuevo',nuevo)],
   states={
